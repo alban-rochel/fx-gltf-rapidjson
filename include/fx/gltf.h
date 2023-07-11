@@ -15,8 +15,16 @@
 #include <system_error>
 #include <unordered_map>
 #include <vector>
+#include <map>
 
-#include <nlohmann/json.hpp>
+
+// rapidjson
+#include <rapidjson/document.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/istreamwrapper.h>
+#include <rapidjson/writer.h>
+#include <rapidjson/prettywriter.h>
+#include <rapidjson/error/en.h>
 
 #if (defined(__cplusplus) && __cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L) && (_MSC_VER >= 1911))
     #define FX_GLTF_HAS_CPP_17
@@ -50,7 +58,7 @@
     #define FX_GLTF_FILESYSTEM std::filesystem
 #endif
 
-namespace fx
+namespace rapidfx
 {
 namespace base64
 {
@@ -214,81 +222,233 @@ namespace gltf
         }
     };
 
+    // Deserialization: base types
+    inline void from_json(const rapidjson::Value& in_json, bool& io_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_val = in_json.GetBool();
+    }
+    inline void from_json(const rapidjson::Value& in_json, int& io_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_val = in_json.GetInt();
+    }
+    inline void from_json(const rapidjson::Value& in_json, unsigned int& io_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_val = in_json.GetUint();
+    }
+    inline void from_json(const rapidjson::Value& in_json, float& io_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_val = in_json.GetFloat();
+    }
+    inline void from_json(const rapidjson::Value& in_json, std::string& io_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_val = in_json.GetString();
+    }
+    // Deserialization: attributes map
+    inline void from_json(const rapidjson::Value& in_json, std::unordered_map<std::string, uint32_t>& io_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        for (rapidjson::Value::ConstMemberIterator iter = in_json.MemberBegin(); iter != in_json.MemberEnd();
+            ++iter) {
+            io_val[iter->name.GetString()] = iter->value.GetUint();
+        }
+    }
+    // Deserialization: vectors
+    template<typename InnerType>
+    inline void from_json(const rapidjson::Value& in_json, std::vector<InnerType>& io_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept {
+        if (in_json.IsArray()) {
+            auto array = in_json.GetArray();
+            io_val.resize(array.Size());
+            for (uint32_t index = 0; index < io_val.size(); ++index) {
+                from_json(array[index], io_val[index], in_alloc);
+            }
+        }
+    }
+    // Deserialization: arrays
+    template<typename InnerType, std::size_t N>
+    inline void from_json(const rapidjson::Value& in_json, std::array<InnerType, N>& io_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept {
+        if (in_json.IsArray()) {
+            auto array = in_json.GetArray();
+            for (uint32_t index = 0; index < N; ++index) {
+                from_json(array[index], io_val[index], in_alloc);
+            }
+        }
+    }
+    
+    // Serialization: base types
+    inline void to_json(rapidjson::Value& io_json, const bool& in_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_json.SetBool(in_val);
+    }
+    inline void to_json(rapidjson::Value& io_json, const int& in_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_json.SetInt(in_val);
+    }
+    inline void to_json(rapidjson::Value& io_json, const unsigned int& in_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_json.SetUint(in_val);
+    }
+    inline void to_json(rapidjson::Value& io_json, const float& in_val,
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept {
+        io_json.SetFloat(in_val);
+    }
+    inline void to_json(rapidjson::Value& io_json, const std::string& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept {
+        io_json.SetString(in_val.c_str(), in_val.size(), in_alloc);
+    }
+    // Serialization: attributes map
+    inline void to_json(rapidjson::Value& io_json, const std::unordered_map<std::string, uint32_t>& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        for (const auto& [key, val] : in_val)
+        {
+            rapidjson::Value jsonVal;
+            jsonVal.SetUint(val);
+            io_json.AddMember(rapidjson::Value(key.c_str(), key.size(), in_alloc), jsonVal, in_alloc);
+        }
+    }
+    // Serialization: vectors
+    template<typename InnerType>
+    inline void to_json(rapidjson::Value& io_json, const std::vector<InnerType>& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept {
+        io_json.SetArray();
+        for (uint32_t valIndex = 0; valIndex < in_val.size(); ++valIndex)
+        {
+            const InnerType& val = in_val[valIndex];
+            rapidjson::Value jsonVal;
+            to_json(jsonVal, val, in_alloc);
+            io_json.PushBack(jsonVal, in_alloc);
+        }
+    }
+    // Serialization: arrays
+    template<typename InnerType, std::size_t N>
+    inline void to_json(rapidjson::Value& io_json, const std::array<InnerType, N>& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept {
+        io_json.SetArray();
+        for (uint32_t valIndex = 0; valIndex < N; ++valIndex)
+        {
+            const InnerType& val = in_val[valIndex];
+            rapidjson::Value jsonVal;
+            to_json(jsonVal, val, in_alloc);
+            io_json.PushBack(jsonVal, in_alloc);
+        }
+    }
+
     namespace detail
     {
-#if defined(FX_GLTF_HAS_CPP_17)
+        // read fields
+        
         template <typename TTarget>
-        inline void ReadRequiredField(std::string_view key, nlohmann::json const & json, TTarget & target)
-#else
-        template <typename TKey, typename TTarget>
-        inline void ReadRequiredField(TKey && key, nlohmann::json const & json, TTarget & target)
-#endif
+        inline void ReadRequiredField(  const char* key,
+                                        const rapidjson::Value& in_node,
+                                        TTarget & target,
+                                        rapidjson::MemoryPoolAllocator<>& in_alloc)
         {
-            const nlohmann::json::const_iterator iter = json.find(key);
-            if (iter == json.end())
+            if (!in_node.HasMember(key))
             {
                 throw invalid_gltf_document("Required field not found", std::string(key));
             }
-
-            target = iter->get<TTarget>();
+            from_json(in_node[key], target, in_alloc);
         }
 
-#if defined(FX_GLTF_HAS_CPP_17)
         template <typename TTarget>
-        inline void ReadOptionalField(std::string_view key, nlohmann::json const & json, TTarget & target)
-#else
-        template <typename TKey, typename TTarget>
-        inline void ReadOptionalField(TKey && key, nlohmann::json const & json, TTarget & target)
-#endif
+        inline void ReadOptionalField(  const char* key,
+                                        const rapidjson::Value& in_node,
+                                        TTarget& target,
+                                        rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept
         {
-            const nlohmann::json::const_iterator iter = json.find(key);
-            if (iter != json.end())
+            if (in_node.HasMember(key))
             {
-                target = iter->get<TTarget>();
+                from_json(in_node[key], target, in_alloc);
             }
         }
 
-        inline void ReadExtensionsAndExtras(nlohmann::json const & json, nlohmann::json & extensionsAndExtras)
+        inline void ReadExtensions( const rapidjson::Value& in_node,
+                                    std::shared_ptr<rapidjson::Value>& extensions,
+                                    rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept
         {
-            const nlohmann::json::const_iterator iterExtensions = json.find("extensions");
-            const nlohmann::json::const_iterator iterExtras = json.find("extras");
-            if (iterExtensions != json.end())
+            if (in_node.HasMember("extensions"))
             {
-                extensionsAndExtras["extensions"] = *iterExtensions;
+                extensions = std::make_shared<rapidjson::Value>();
+                extensions->CopyFrom(in_node["extensions"], in_alloc);
             }
+        }
+        
+        inline void ReadExtras( const rapidjson::Value& in_node,
+                                std::shared_ptr<rapidjson::Value>& extras,
+                                rapidjson::MemoryPoolAllocator<>& in_alloc) noexcept
+        {
+            if (in_node.HasMember("extras"))
+            {
+                extras = std::make_shared<rapidjson::Value>();
+                extras->CopyFrom(in_node["extras"], in_alloc);
+            }
+        }
+        
+        // write fields
 
-            if (iterExtras != json.end())
+
+        template <typename TValue>
+        inline void WriteField( std::string const& in_key,
+                                rapidjson::Value& io_parent,
+                                TValue const& in_value,
+                                rapidjson::MemoryPoolAllocator<>& in_alloc)
+        {
+            if (! in_value.empty())
             {
-                extensionsAndExtras["extras"] = *iterExtras;
+                rapidjson::Value val;
+                to_json(val, in_value, in_alloc);
+                io_parent.AddMember(rapidjson::Value(in_key.c_str(), in_alloc), val, in_alloc);
             }
+        }
+
+        template <>
+        inline void WriteField(std::string const& in_key,
+                                    rapidjson::Value& io_parent,
+                                    int const& in_value,
+                                    rapidjson::MemoryPoolAllocator<>& in_alloc)
+        {
+            rapidjson::Value val;
+            to_json(val, in_value, in_alloc);
+            io_parent.AddMember(rapidjson::Value(in_key.c_str(), in_alloc), val, in_alloc);
+        }
+
+        template <>
+        inline void WriteField( std::string const& in_key,
+                                rapidjson::Value& io_parent,
+                                float const& in_value,
+                                rapidjson::MemoryPoolAllocator<>& in_alloc)
+        {
+            rapidjson::Value val;
+            to_json(val, in_value, in_alloc);
+            io_parent.AddMember(rapidjson::Value(in_key.c_str(), in_alloc), val, in_alloc);
         }
 
         template <typename TValue>
-        inline void WriteField(std::string const & key, nlohmann::json & json, TValue const & value)
+        inline void WriteField( std::string const& in_key,
+                                rapidjson::Value& io_parent,
+                                TValue const& in_value,
+                                TValue const& in_defaultValue,
+                                rapidjson::MemoryPoolAllocator<>& in_alloc)
         {
-            if (!value.empty())
+            if (in_value != in_defaultValue)
             {
-                json[key] = value;
+                rapidjson::Value val;
+                to_json(val, in_value, in_alloc);
+                io_parent.AddMember(rapidjson::Value(in_key.c_str(), in_alloc), val, in_alloc);
             }
         }
-
-        template <typename TValue>
-        inline void WriteField(std::string const & key, nlohmann::json & json, TValue const & value, TValue const & defaultValue)
+        
+        inline void WriteField( std::string const& in_key,
+                                rapidjson::Value& io_parent,
+                                const rapidjson::Value& in_value,
+                                rapidjson::MemoryPoolAllocator<>& in_alloc)
         {
-            if (value != defaultValue)
+            if (in_value.IsObject())
             {
-                json[key] = value;
-            }
-        }
-
-        inline void WriteExtensions(nlohmann::json & json, nlohmann::json const & extensionsAndExtras)
-        {
-            if (!extensionsAndExtras.empty())
-            {
-                for (nlohmann::json::const_iterator it = extensionsAndExtras.begin(); it != extensionsAndExtras.end(); ++it)
-                {
-                    json[it.key()] = it.value();
-                }
+                rapidjson::Value val;
+                val.CopyFrom(in_value, in_alloc);
+                io_parent.AddMember(rapidjson::Value(in_key.c_str(), in_alloc), val, in_alloc);
             }
         }
 
@@ -396,7 +556,8 @@ namespace gltf
                 uint32_t byteOffset{};
                 ComponentType componentType{ ComponentType::None };
 
-                nlohmann::json extensionsAndExtras{};
+                std::shared_ptr<rapidjson::Value> extensions;
+                std::shared_ptr<rapidjson::Value> extras;
             };
 
             struct Values : NeverEmpty
@@ -404,14 +565,16 @@ namespace gltf
                 uint32_t bufferView{};
                 uint32_t byteOffset{};
 
-                nlohmann::json extensionsAndExtras{};
+                std::shared_ptr<rapidjson::Value> extensions;
+                std::shared_ptr<rapidjson::Value> extras;
             };
 
             int32_t count{};
             Indices indices{};
             Values values{};
 
-            nlohmann::json extensionsAndExtras{};
+            std::shared_ptr<rapidjson::Value> extensions;
+            std::shared_ptr<rapidjson::Value> extras;
 
             FX_GLTF_NODISCARD bool empty() const noexcept
             {
@@ -432,7 +595,8 @@ namespace gltf
         std::vector<float> max{};
         std::vector<float> min{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Animation
@@ -444,13 +608,15 @@ namespace gltf
                 int32_t node{ -1 };
                 std::string path{};
 
-                nlohmann::json extensionsAndExtras{};
+                std::shared_ptr<rapidjson::Value> extensions;
+                std::shared_ptr<rapidjson::Value> extras;
             };
 
             int32_t sampler{ -1 };
             Target target{};
 
-            nlohmann::json extensionsAndExtras{};
+            std::shared_ptr<rapidjson::Value> extensions;
+            std::shared_ptr<rapidjson::Value> extras;
         };
 
         struct Sampler
@@ -467,14 +633,16 @@ namespace gltf
 
             Type interpolation{ Sampler::Type::Linear };
 
-            nlohmann::json extensionsAndExtras{};
+            std::shared_ptr<rapidjson::Value> extensions;
+            std::shared_ptr<rapidjson::Value> extras;
         };
 
         std::string name{};
         std::vector<Channel> channels{};
         std::vector<Sampler> samplers{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Asset : NeverEmpty
@@ -484,7 +652,8 @@ namespace gltf
         std::string minVersion{};
         std::string version{ "2.0" };
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Buffer
@@ -494,7 +663,8 @@ namespace gltf
         std::string name;
         std::string uri;
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
 
         std::vector<uint8_t> data{};
 
@@ -527,7 +697,8 @@ namespace gltf
 
         TargetType target{ TargetType::None };
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Camera
@@ -546,7 +717,8 @@ namespace gltf
             float zfar{ -defaults::FloatSentinel };
             float znear{ -defaults::FloatSentinel };
 
-            nlohmann::json extensionsAndExtras{};
+            std::shared_ptr<rapidjson::Value> extensions;
+            std::shared_ptr<rapidjson::Value> extras;
         };
 
         struct Perspective : NeverEmpty
@@ -556,7 +728,8 @@ namespace gltf
             float zfar{};
             float znear{};
 
-            nlohmann::json extensionsAndExtras{};
+            std::shared_ptr<rapidjson::Value> extensions;
+            std::shared_ptr<rapidjson::Value> extras;
         };
 
         std::string name{};
@@ -565,7 +738,8 @@ namespace gltf
         Orthographic orthographic;
         Perspective perspective;
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Image
@@ -576,7 +750,8 @@ namespace gltf
         std::string uri;
         std::string mimeType;
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
 
         FX_GLTF_NODISCARD bool IsEmbeddedResource() const noexcept
         {
@@ -615,7 +790,8 @@ namespace gltf
             int32_t index{ -1 };
             int32_t texCoord{};
 
-            nlohmann::json extensionsAndExtras{};
+            std::shared_ptr<rapidjson::Value> extensions;
+            std::shared_ptr<rapidjson::Value> extras;
 
             FX_GLTF_NODISCARD bool empty() const noexcept
             {
@@ -642,7 +818,8 @@ namespace gltf
             float metallicFactor{ defaults::IdentityScalar };
             Texture metallicRoughnessTexture;
 
-            nlohmann::json extensionsAndExtras{};
+            std::shared_ptr<rapidjson::Value> extensions;
+            std::shared_ptr<rapidjson::Value> extras;
 
             FX_GLTF_NODISCARD bool empty() const
             {
@@ -663,7 +840,8 @@ namespace gltf
         std::array<float, 3> emissiveFactor = { defaults::NullVec3 };
 
         std::string name;
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Primitive
@@ -687,7 +865,8 @@ namespace gltf
         Attributes attributes{};
         std::vector<Attributes> targets{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Mesh
@@ -697,7 +876,8 @@ namespace gltf
         std::vector<float> weights{};
         std::vector<Primitive> primitives{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Node
@@ -716,7 +896,8 @@ namespace gltf
         std::vector<int32_t> children{};
         std::vector<float> weights{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Sampler
@@ -754,11 +935,12 @@ namespace gltf
         WrappingMode wrapS{ WrappingMode::Repeat };
         WrappingMode wrapT{ WrappingMode::Repeat };
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
 
         FX_GLTF_NODISCARD bool empty() const noexcept
         {
-            return name.empty() && magFilter == MagFilter::None && minFilter == MinFilter::None && wrapS == WrappingMode::Repeat && wrapT == WrappingMode::Repeat && extensionsAndExtras.empty();
+            return name.empty() && magFilter == MagFilter::None && minFilter == MinFilter::None && wrapS == WrappingMode::Repeat && wrapT == WrappingMode::Repeat && !extensions && !extras;
         }
     };
 
@@ -768,7 +950,8 @@ namespace gltf
 
         std::vector<uint32_t> nodes{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Skin
@@ -779,7 +962,8 @@ namespace gltf
         std::string name;
         std::vector<uint32_t> joints{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Texture
@@ -789,7 +973,8 @@ namespace gltf
         int32_t sampler{ -1 };
         int32_t source{ -1 };
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
     };
 
     struct Document
@@ -814,7 +999,10 @@ namespace gltf
         std::vector<std::string> extensionsUsed{};
         std::vector<std::string> extensionsRequired{};
 
-        nlohmann::json extensionsAndExtras{};
+        std::shared_ptr<rapidjson::Value> extensions;
+        std::shared_ptr<rapidjson::Value> extras;
+
+        std::shared_ptr<rapidjson::Document> jsonDocument;
     };
 
     struct ReadQuotas
@@ -823,37 +1011,50 @@ namespace gltf
         uint32_t MaxFileSize{ detail::DefaultMaxMemoryAllocation };
         uint32_t MaxBufferByteLength{ detail::DefaultMaxMemoryAllocation };
     };
+    
+    // Deserialization: enums
+#define FROM_JSON_ENUM(EnumName)                                             \
+    inline void from_json(const rapidjson::Value& in_json, EnumName& io_val, \
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept { \
+        io_val = (EnumName) (in_json.GetUint());                             \
+    }
+    FROM_JSON_ENUM(Accessor::ComponentType)
+    FROM_JSON_ENUM(BufferView::TargetType)
+    FROM_JSON_ENUM(Primitive::Mode)
+    FROM_JSON_ENUM(Sampler::MagFilter)
+    FROM_JSON_ENUM(Sampler::MinFilter)
+    FROM_JSON_ENUM(Sampler::WrappingMode)
 
-    inline void from_json(nlohmann::json const & json, Accessor::Type & accessorType)
+    inline void from_json(const rapidjson::Value& in_json, Accessor::Type& io_val, rapidjson::MemoryPoolAllocator<>& /**/)
     {
-        std::string type = json.get<std::string>();
+        std::string type = in_json.GetString();
         if (type == "SCALAR")
         {
-            accessorType = Accessor::Type::Scalar;
+            io_val = Accessor::Type::Scalar;
         }
         else if (type == "VEC2")
         {
-            accessorType = Accessor::Type::Vec2;
+            io_val = Accessor::Type::Vec2;
         }
         else if (type == "VEC3")
         {
-            accessorType = Accessor::Type::Vec3;
+            io_val = Accessor::Type::Vec3;
         }
         else if (type == "VEC4")
         {
-            accessorType = Accessor::Type::Vec4;
+            io_val = Accessor::Type::Vec4;
         }
         else if (type == "MAT2")
         {
-            accessorType = Accessor::Type::Mat2;
+            io_val = Accessor::Type::Mat2;
         }
         else if (type == "MAT3")
         {
-            accessorType = Accessor::Type::Mat3;
+            io_val = Accessor::Type::Mat3;
         }
         else if (type == "MAT4")
         {
-            accessorType = Accessor::Type::Mat4;
+            io_val = Accessor::Type::Mat4;
         }
         else
         {
@@ -861,802 +1062,944 @@ namespace gltf
         }
     }
 
-    inline void from_json(nlohmann::json const & json, Accessor::Sparse::Values & values)
+    inline void from_json(const rapidjson::Value& in_json, Accessor::Sparse::Values& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("bufferView", json, values.bufferView);
-
-        detail::ReadOptionalField("byteOffset", json, values.byteOffset);
-
-        detail::ReadExtensionsAndExtras(json, values.extensionsAndExtras);
+        detail::ReadRequiredField("bufferView", in_json, io_val.bufferView, in_alloc);
+    
+        detail::ReadOptionalField("byteOffset", in_json, io_val.byteOffset, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Accessor::Sparse::Indices & indices)
+    
+    inline void from_json(const rapidjson::Value& in_json, Accessor::Sparse::Indices& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("bufferView", json, indices.bufferView);
-        detail::ReadRequiredField("componentType", json, indices.componentType);
-
-        detail::ReadOptionalField("byteOffset", json, indices.byteOffset);
-
-        detail::ReadExtensionsAndExtras(json, indices.extensionsAndExtras);
+        detail::ReadRequiredField("bufferView", in_json, io_val.bufferView, in_alloc);
+        detail::ReadRequiredField("componentType", in_json, io_val.componentType, in_alloc);
+    
+        detail::ReadOptionalField("byteOffset", in_json, io_val.byteOffset, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Accessor::Sparse & sparse)
+    
+    inline void from_json(const rapidjson::Value& in_json, Accessor::Sparse& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("count", json, sparse.count);
-        detail::ReadRequiredField("indices", json, sparse.indices);
-        detail::ReadRequiredField("values", json, sparse.values);
-
-        detail::ReadExtensionsAndExtras(json, sparse.extensionsAndExtras);
+        detail::ReadRequiredField("count", in_json, io_val.count, in_alloc);
+        detail::ReadRequiredField("indices", in_json, io_val.indices, in_alloc);
+        detail::ReadRequiredField("values", in_json, io_val.values, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Accessor & accessor)
+    
+    inline void from_json(const rapidjson::Value& in_json, Accessor& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("componentType", json, accessor.componentType);
-        detail::ReadRequiredField("count", json, accessor.count);
-        detail::ReadRequiredField("type", json, accessor.type);
-
-        detail::ReadOptionalField("bufferView", json, accessor.bufferView);
-        detail::ReadOptionalField("byteOffset", json, accessor.byteOffset);
-        detail::ReadOptionalField("max", json, accessor.max);
-        detail::ReadOptionalField("min", json, accessor.min);
-        detail::ReadOptionalField("name", json, accessor.name);
-        detail::ReadOptionalField("normalized", json, accessor.normalized);
-        detail::ReadOptionalField("sparse", json, accessor.sparse);
-
-        detail::ReadExtensionsAndExtras(json, accessor.extensionsAndExtras);
+        detail::ReadRequiredField("componentType", in_json, io_val.componentType, in_alloc);
+        detail::ReadRequiredField("count", in_json, io_val.count, in_alloc);
+        detail::ReadRequiredField("type", in_json, io_val.type, in_alloc);
+    
+        detail::ReadOptionalField("bufferView", in_json, io_val.bufferView, in_alloc);
+        detail::ReadOptionalField("byteOffset", in_json, io_val.byteOffset, in_alloc);
+        detail::ReadOptionalField("max", in_json, io_val.max, in_alloc);
+        detail::ReadOptionalField("min", in_json, io_val.min, in_alloc);
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("normalized", in_json, io_val.normalized, in_alloc);
+        detail::ReadOptionalField("sparse", in_json, io_val.sparse, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Animation::Channel::Target & animationChannelTarget)
+    
+    inline void from_json(const rapidjson::Value& in_json, Animation::Channel::Target& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("path", json, animationChannelTarget.path);
-
-        detail::ReadOptionalField("node", json, animationChannelTarget.node);
-
-        detail::ReadExtensionsAndExtras(json, animationChannelTarget.extensionsAndExtras);
+        detail::ReadRequiredField("path", in_json, io_val.path, in_alloc);
+    
+        detail::ReadOptionalField("node", in_json, io_val.node, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Animation::Channel & animationChannel)
+    
+    inline void from_json(const rapidjson::Value& in_json, Animation::Channel& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("sampler", json, animationChannel.sampler);
-        detail::ReadRequiredField("target", json, animationChannel.target);
-
-        detail::ReadExtensionsAndExtras(json, animationChannel.extensionsAndExtras);
+        detail::ReadRequiredField("sampler", in_json, io_val.sampler, in_alloc);
+        detail::ReadRequiredField("target", in_json, io_val.target, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Animation::Sampler::Type & animationSamplerType)
+    
+    inline void from_json(const rapidjson::Value& in_json, Animation::Sampler::Type& io_val, rapidjson::MemoryPoolAllocator<>& /**/)
     {
-        std::string type = json.get<std::string>();
+        std::string type = in_json.GetString();
         if (type == "LINEAR")
         {
-            animationSamplerType = Animation::Sampler::Type::Linear;
+            io_val = Animation::Sampler::Type::Linear;
         }
         else if (type == "STEP")
         {
-            animationSamplerType = Animation::Sampler::Type::Step;
+            io_val = Animation::Sampler::Type::Step;
         }
         else if (type == "CUBICSPLINE")
         {
-            animationSamplerType = Animation::Sampler::Type::CubicSpline;
+            io_val = Animation::Sampler::Type::CubicSpline;
         }
         else
         {
             throw invalid_gltf_document("Unknown animation.sampler.interpolation value", type);
         }
     }
-
-    inline void from_json(nlohmann::json const & json, Animation::Sampler & animationSampler)
+    
+    inline void from_json(const rapidjson::Value& in_json, Animation::Sampler& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("input", json, animationSampler.input);
-        detail::ReadRequiredField("output", json, animationSampler.output);
-
-        detail::ReadOptionalField("interpolation", json, animationSampler.interpolation);
-
-        detail::ReadExtensionsAndExtras(json, animationSampler.extensionsAndExtras);
+        detail::ReadRequiredField("input", in_json, io_val.input, in_alloc);
+        detail::ReadRequiredField("output", in_json, io_val.output, in_alloc);
+    
+        detail::ReadOptionalField("interpolation", in_json, io_val.interpolation, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Animation & animation)
+    
+    inline void from_json(const rapidjson::Value& in_json, Animation& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("channels", json, animation.channels);
-        detail::ReadRequiredField("samplers", json, animation.samplers);
-
-        detail::ReadOptionalField("name", json, animation.name);
-
-        detail::ReadExtensionsAndExtras(json, animation.extensionsAndExtras);
+        detail::ReadRequiredField("channels", in_json, io_val.channels, in_alloc);
+        detail::ReadRequiredField("samplers", in_json, io_val.samplers, in_alloc);
+    
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Asset & asset)
+    
+    inline void from_json(const rapidjson::Value& in_json, Asset& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("version", json, asset.version);
-        detail::ReadOptionalField("copyright", json, asset.copyright);
-        detail::ReadOptionalField("generator", json, asset.generator);
-        detail::ReadOptionalField("minVersion", json, asset.minVersion);
-
-        detail::ReadExtensionsAndExtras(json, asset.extensionsAndExtras);
+        detail::ReadRequiredField("version", in_json, io_val.version, in_alloc);
+        detail::ReadOptionalField("copyright", in_json, io_val.copyright, in_alloc);
+        detail::ReadOptionalField("generator", in_json, io_val.generator, in_alloc);
+        detail::ReadOptionalField("minVersion", in_json, io_val.minVersion, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Buffer & buffer)
+    
+    inline void from_json(const rapidjson::Value& in_json, Buffer& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("byteLength", json, buffer.byteLength);
-
-        detail::ReadOptionalField("name", json, buffer.name);
-        detail::ReadOptionalField("uri", json, buffer.uri);
-
-        detail::ReadExtensionsAndExtras(json, buffer.extensionsAndExtras);
+        detail::ReadRequiredField("byteLength", in_json, io_val.byteLength, in_alloc);
+    
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("uri", in_json, io_val.uri, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, BufferView & bufferView)
+    
+    inline void from_json(const rapidjson::Value& in_json, BufferView& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("buffer", json, bufferView.buffer);
-        detail::ReadRequiredField("byteLength", json, bufferView.byteLength);
-
-        detail::ReadOptionalField("byteOffset", json, bufferView.byteOffset);
-        detail::ReadOptionalField("byteStride", json, bufferView.byteStride);
-        detail::ReadOptionalField("name", json, bufferView.name);
-        detail::ReadOptionalField("target", json, bufferView.target);
-
-        detail::ReadExtensionsAndExtras(json, bufferView.extensionsAndExtras);
+        detail::ReadRequiredField("buffer", in_json, io_val.buffer, in_alloc);
+        detail::ReadRequiredField("byteLength", in_json, io_val.byteLength, in_alloc);
+    
+        detail::ReadOptionalField("byteOffset", in_json, io_val.byteOffset, in_alloc);
+        detail::ReadOptionalField("byteStride", in_json, io_val.byteStride, in_alloc);
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("target", in_json, io_val.target, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Camera::Type & cameraType)
+    
+    inline void from_json(const rapidjson::Value& in_json, Camera::Type& io_val, rapidjson::MemoryPoolAllocator<>& /**/)
     {
-        std::string type = json.get<std::string>();
+        std::string type = in_json.GetString();
         if (type == "orthographic")
         {
-            cameraType = Camera::Type::Orthographic;
+            io_val = Camera::Type::Orthographic;
         }
         else if (type == "perspective")
         {
-            cameraType = Camera::Type::Perspective;
+            io_val = Camera::Type::Perspective;
         }
         else
         {
             throw invalid_gltf_document("Unknown camera.type value", type);
         }
     }
-
-    inline void from_json(nlohmann::json const & json, Camera::Orthographic & camera)
+    
+    inline void from_json(const rapidjson::Value& in_json, Camera::Orthographic& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("xmag", json, camera.xmag);
-        detail::ReadRequiredField("ymag", json, camera.ymag);
-        detail::ReadRequiredField("zfar", json, camera.zfar);
-        detail::ReadRequiredField("znear", json, camera.znear);
-
-        detail::ReadExtensionsAndExtras(json, camera.extensionsAndExtras);
+        detail::ReadRequiredField("xmag", in_json, io_val.xmag, in_alloc);
+        detail::ReadRequiredField("ymag", in_json, io_val.ymag, in_alloc);
+        detail::ReadRequiredField("zfar", in_json, io_val.zfar, in_alloc);
+        detail::ReadRequiredField("znear", in_json, io_val.znear, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Camera::Perspective & camera)
+    
+    inline void from_json(const rapidjson::Value& in_json, Camera::Perspective& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("yfov", json, camera.yfov);
-        detail::ReadRequiredField("znear", json, camera.znear);
-
-        detail::ReadOptionalField("aspectRatio", json, camera.aspectRatio);
-        detail::ReadOptionalField("zfar", json, camera.zfar);
-
-        detail::ReadExtensionsAndExtras(json, camera.extensionsAndExtras);
+        detail::ReadRequiredField("yfov", in_json, io_val.yfov, in_alloc);
+        detail::ReadRequiredField("znear", in_json, io_val.znear, in_alloc);
+    
+        detail::ReadOptionalField("aspectRatio", in_json, io_val.aspectRatio, in_alloc);
+        detail::ReadOptionalField("zfar", in_json, io_val.zfar, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Camera & camera)
+    
+    inline void from_json(const rapidjson::Value& in_json, Camera& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("type", json, camera.type);
-
-        detail::ReadOptionalField("name", json, camera.name);
-
-        detail::ReadExtensionsAndExtras(json, camera.extensionsAndExtras);
-
-        if (camera.type == Camera::Type::Perspective)
+        detail::ReadRequiredField("type", in_json, io_val.type, in_alloc);
+    
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    
+        if (io_val.type == Camera::Type::Perspective)
         {
-            detail::ReadRequiredField("perspective", json, camera.perspective);
-        }
-        else if (camera.type == Camera::Type::Orthographic)
+            detail::ReadRequiredField("perspective", in_json, io_val.perspective, in_alloc);
+        } else if (io_val.type == Camera::Type::Orthographic)
         {
-            detail::ReadRequiredField("orthographic", json, camera.orthographic);
+            detail::ReadRequiredField("orthographic", in_json, io_val.orthographic, in_alloc);
         }
     }
-
-    inline void from_json(nlohmann::json const & json, Image & image)
+    
+    inline void from_json(const rapidjson::Value& in_json, Image& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadOptionalField("bufferView", json, image.bufferView);
-        detail::ReadOptionalField("mimeType", json, image.mimeType);
-        detail::ReadOptionalField("name", json, image.name);
-        detail::ReadOptionalField("uri", json, image.uri);
-
-        detail::ReadExtensionsAndExtras(json, image.extensionsAndExtras);
+        detail::ReadOptionalField("bufferView", in_json, io_val.bufferView, in_alloc);
+        detail::ReadOptionalField("mimeType", in_json, io_val.mimeType, in_alloc);
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("uri", in_json, io_val.uri, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Material::AlphaMode & materialAlphaMode)
+    
+    inline void from_json(const rapidjson::Value& in_json, Material::AlphaMode& io_val, rapidjson::MemoryPoolAllocator<>& /**/)
     {
-        std::string alphaMode = json.get<std::string>();
+        std::string alphaMode = in_json.GetString();
         if (alphaMode == "OPAQUE")
         {
-            materialAlphaMode = Material::AlphaMode::Opaque;
+            io_val = Material::AlphaMode::Opaque;
         }
         else if (alphaMode == "MASK")
         {
-            materialAlphaMode = Material::AlphaMode::Mask;
+            io_val = Material::AlphaMode::Mask;
         }
         else if (alphaMode == "BLEND")
         {
-            materialAlphaMode = Material::AlphaMode::Blend;
+            io_val = Material::AlphaMode::Blend;
         }
         else
         {
             throw invalid_gltf_document("Unknown material.alphaMode value", alphaMode);
         }
     }
-
-    inline void from_json(nlohmann::json const & json, Material::Texture & materialTexture)
+    
+    inline void from_json(const rapidjson::Value& in_json, Material::Texture& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadRequiredField("index", json, materialTexture.index);
-        detail::ReadOptionalField("texCoord", json, materialTexture.texCoord);
-
-        detail::ReadExtensionsAndExtras(json, materialTexture.extensionsAndExtras);
+        detail::ReadRequiredField("index", in_json, io_val.index, in_alloc);
+        detail::ReadOptionalField("texCoord", in_json, io_val.texCoord, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Material::NormalTexture& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        from_json(in_json, static_cast<Material::Texture&>(io_val), in_alloc);
+        detail::ReadOptionalField("scale", in_json, io_val.scale, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Material::OcclusionTexture& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        from_json(in_json, static_cast<Material::Texture&>(io_val), in_alloc);
+        detail::ReadOptionalField("strength", in_json, io_val.strength, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Material::PBRMetallicRoughness& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadOptionalField("baseColorFactor", in_json, io_val.baseColorFactor, in_alloc);
+        detail::ReadOptionalField("baseColorTexture", in_json, io_val.baseColorTexture, in_alloc);
+        detail::ReadOptionalField("metallicFactor", in_json, io_val.metallicFactor, in_alloc);
+        detail::ReadOptionalField("metallicRoughnessTexture", in_json, io_val.metallicRoughnessTexture, in_alloc);
+        detail::ReadOptionalField("roughnessFactor", in_json, io_val.roughnessFactor, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Material& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadOptionalField("alphaMode", in_json, io_val.alphaMode, in_alloc);
+        detail::ReadOptionalField("alphaCutoff", in_json, io_val.alphaCutoff, in_alloc);
+        detail::ReadOptionalField("doubleSided", in_json, io_val.doubleSided, in_alloc);
+        detail::ReadOptionalField("emissiveFactor", in_json, io_val.emissiveFactor, in_alloc);
+        detail::ReadOptionalField("emissiveTexture", in_json, io_val.emissiveTexture, in_alloc);
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("normalTexture", in_json, io_val.normalTexture, in_alloc);
+        detail::ReadOptionalField("occlusionTexture", in_json, io_val.occlusionTexture, in_alloc);
+        detail::ReadOptionalField("pbrMetallicRoughness", in_json, io_val.pbrMetallicRoughness, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Mesh& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadRequiredField("primitives", in_json, io_val.primitives, in_alloc);
+    
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("weights", in_json, io_val.weights, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Node& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadOptionalField("camera", in_json, io_val.camera, in_alloc);
+        detail::ReadOptionalField("children", in_json, io_val.children, in_alloc);
+        detail::ReadOptionalField("matrix", in_json, io_val.matrix, in_alloc);
+        detail::ReadOptionalField("mesh", in_json, io_val.mesh, in_alloc);
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("rotation", in_json, io_val.rotation, in_alloc);
+        detail::ReadOptionalField("scale", in_json, io_val.scale, in_alloc);
+        detail::ReadOptionalField("skin", in_json, io_val.skin, in_alloc);
+        detail::ReadOptionalField("translation", in_json, io_val.translation, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Primitive & io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadRequiredField("attributes", in_json, io_val.attributes, in_alloc);
+    
+        detail::ReadOptionalField("indices", in_json, io_val.indices, in_alloc);
+        detail::ReadOptionalField("material", in_json, io_val.material, in_alloc);
+        detail::ReadOptionalField("mode", in_json, io_val.mode, in_alloc);
+        detail::ReadOptionalField("targets", in_json, io_val.targets, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Sampler& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadOptionalField("magFilter", in_json, io_val.magFilter, in_alloc);
+        detail::ReadOptionalField("minFilter", in_json, io_val.minFilter, in_alloc);
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("wrapS", in_json, io_val.wrapS, in_alloc);
+        detail::ReadOptionalField("wrapT", in_json, io_val.wrapT, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Scene& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("nodes", in_json, io_val.nodes, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Skin& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadRequiredField("joints", in_json, io_val.joints, in_alloc);
+    
+        detail::ReadOptionalField("inverseBindMatrices", in_json, io_val.inverseBindMatrices, in_alloc);
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("skeleton", in_json, io_val.skeleton, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
+    }
+    
+    inline void from_json(const rapidjson::Value& in_json, Texture& io_val, rapidjson::MemoryPoolAllocator<>& in_alloc)
+    {
+        detail::ReadOptionalField("name", in_json, io_val.name, in_alloc);
+        detail::ReadOptionalField("sampler", in_json, io_val.sampler, in_alloc);
+        detail::ReadOptionalField("source", in_json, io_val.source, in_alloc);
+    
+        detail::ReadExtensions(in_json, io_val.extensions, in_alloc);
+        detail::ReadExtras(in_json, io_val.extras, in_alloc);
     }
 
-    inline void from_json(nlohmann::json const & json, Material::NormalTexture & materialTexture)
-    {
-        from_json(json, static_cast<Material::Texture &>(materialTexture));
-        detail::ReadOptionalField("scale", json, materialTexture.scale);
+    inline void from_json(const rapidjson::Document& in_doc, Document& document) {
+        document.jsonDocument = std::make_shared<rapidjson::Document>();
+        rapidjson::MemoryPoolAllocator<>& alloc = document.jsonDocument->GetAllocator();
+        detail::ReadRequiredField("asset", in_doc, document.asset, alloc);
+        detail::ReadOptionalField("accessors", in_doc, document.accessors, alloc);
+        detail::ReadOptionalField("animations", in_doc, document.animations, alloc);
+        detail::ReadOptionalField("buffers", in_doc, document.buffers, alloc);
+        detail::ReadOptionalField("bufferViews", in_doc, document.bufferViews, alloc);
+        detail::ReadOptionalField("cameras", in_doc, document.cameras, alloc);
+        detail::ReadOptionalField("materials", in_doc, document.materials, alloc);
+        detail::ReadOptionalField("meshes", in_doc, document.meshes, alloc);
+        detail::ReadOptionalField("nodes", in_doc, document.nodes, alloc);
+        detail::ReadOptionalField("images", in_doc, document.images, alloc);
+        detail::ReadOptionalField("samplers", in_doc, document.samplers, alloc);
+        detail::ReadOptionalField("scene", in_doc, document.scene, alloc);
+        detail::ReadOptionalField("scenes", in_doc, document.scenes, alloc);
+        detail::ReadOptionalField("skins", in_doc, document.skins, alloc);
+        detail::ReadOptionalField("textures", in_doc, document.textures, alloc);
 
-        detail::ReadExtensionsAndExtras(json, materialTexture.extensionsAndExtras);
+        detail::ReadOptionalField("extensionsUsed", in_doc, document.extensionsUsed, alloc);
+        detail::ReadOptionalField("extensionsRequired", in_doc, document.extensionsRequired, alloc);
+        detail::ReadExtensions(in_doc, document.extensions, alloc);
+        detail::ReadExtras(in_doc, document.extras, alloc);
     }
-
-    inline void from_json(nlohmann::json const & json, Material::OcclusionTexture & materialTexture)
-    {
-        from_json(json, static_cast<Material::Texture &>(materialTexture));
-        detail::ReadOptionalField("strength", json, materialTexture.strength);
-
-        detail::ReadExtensionsAndExtras(json, materialTexture.extensionsAndExtras);
+    
+    // Serialization: enums
+#define TO_JSON_ENUM(EnumName)                                             \
+    inline void to_json(rapidjson::Value& io_json, const EnumName& in_val, \
+                        rapidjson::MemoryPoolAllocator<>& /**/) noexcept { \
+        io_json.SetUint((unsigned int) in_val);                            \
     }
-
-    inline void from_json(nlohmann::json const & json, Material::PBRMetallicRoughness & pbrMetallicRoughness)
+    TO_JSON_ENUM(Accessor::ComponentType)
+    TO_JSON_ENUM(BufferView::TargetType)
+    TO_JSON_ENUM(Primitive::Mode)
+    TO_JSON_ENUM(Sampler::MagFilter)
+    TO_JSON_ENUM(Sampler::MinFilter)
+    TO_JSON_ENUM(Sampler::WrappingMode)
+    inline void to_json(rapidjson::Value& io_json, const Accessor::Type in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::ReadOptionalField("baseColorFactor", json, pbrMetallicRoughness.baseColorFactor);
-        detail::ReadOptionalField("baseColorTexture", json, pbrMetallicRoughness.baseColorTexture);
-        detail::ReadOptionalField("metallicFactor", json, pbrMetallicRoughness.metallicFactor);
-        detail::ReadOptionalField("metallicRoughnessTexture", json, pbrMetallicRoughness.metallicRoughnessTexture);
-        detail::ReadOptionalField("roughnessFactor", json, pbrMetallicRoughness.roughnessFactor);
-
-        detail::ReadExtensionsAndExtras(json, pbrMetallicRoughness.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Material & material)
-    {
-        detail::ReadOptionalField("alphaMode", json, material.alphaMode);
-        detail::ReadOptionalField("alphaCutoff", json, material.alphaCutoff);
-        detail::ReadOptionalField("doubleSided", json, material.doubleSided);
-        detail::ReadOptionalField("emissiveFactor", json, material.emissiveFactor);
-        detail::ReadOptionalField("emissiveTexture", json, material.emissiveTexture);
-        detail::ReadOptionalField("name", json, material.name);
-        detail::ReadOptionalField("normalTexture", json, material.normalTexture);
-        detail::ReadOptionalField("occlusionTexture", json, material.occlusionTexture);
-        detail::ReadOptionalField("pbrMetallicRoughness", json, material.pbrMetallicRoughness);
-
-        detail::ReadExtensionsAndExtras(json, material.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Mesh & mesh)
-    {
-        detail::ReadRequiredField("primitives", json, mesh.primitives);
-
-        detail::ReadOptionalField("name", json, mesh.name);
-        detail::ReadOptionalField("weights", json, mesh.weights);
-
-        detail::ReadExtensionsAndExtras(json, mesh.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Node & node)
-    {
-        detail::ReadOptionalField("camera", json, node.camera);
-        detail::ReadOptionalField("children", json, node.children);
-        detail::ReadOptionalField("matrix", json, node.matrix);
-        detail::ReadOptionalField("mesh", json, node.mesh);
-        detail::ReadOptionalField("name", json, node.name);
-        detail::ReadOptionalField("rotation", json, node.rotation);
-        detail::ReadOptionalField("scale", json, node.scale);
-        detail::ReadOptionalField("skin", json, node.skin);
-        detail::ReadOptionalField("translation", json, node.translation);
-
-        detail::ReadExtensionsAndExtras(json, node.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Primitive & primitive)
-    {
-        detail::ReadRequiredField("attributes", json, primitive.attributes);
-
-        detail::ReadOptionalField("indices", json, primitive.indices);
-        detail::ReadOptionalField("material", json, primitive.material);
-        detail::ReadOptionalField("mode", json, primitive.mode);
-        detail::ReadOptionalField("targets", json, primitive.targets);
-
-        detail::ReadExtensionsAndExtras(json, primitive.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Sampler & sampler)
-    {
-        detail::ReadOptionalField("magFilter", json, sampler.magFilter);
-        detail::ReadOptionalField("minFilter", json, sampler.minFilter);
-        detail::ReadOptionalField("name", json, sampler.name);
-        detail::ReadOptionalField("wrapS", json, sampler.wrapS);
-        detail::ReadOptionalField("wrapT", json, sampler.wrapT);
-
-        detail::ReadExtensionsAndExtras(json, sampler.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Scene & scene)
-    {
-        detail::ReadOptionalField("name", json, scene.name);
-        detail::ReadOptionalField("nodes", json, scene.nodes);
-
-        detail::ReadExtensionsAndExtras(json, scene.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Skin & skin)
-    {
-        detail::ReadRequiredField("joints", json, skin.joints);
-
-        detail::ReadOptionalField("inverseBindMatrices", json, skin.inverseBindMatrices);
-        detail::ReadOptionalField("name", json, skin.name);
-        detail::ReadOptionalField("skeleton", json, skin.skeleton);
-
-        detail::ReadExtensionsAndExtras(json, skin.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Texture & texture)
-    {
-        detail::ReadOptionalField("name", json, texture.name);
-        detail::ReadOptionalField("sampler", json, texture.sampler);
-        detail::ReadOptionalField("source", json, texture.source);
-
-        detail::ReadExtensionsAndExtras(json, texture.extensionsAndExtras);
-    }
-
-    inline void from_json(nlohmann::json const & json, Document & document)
-    {
-        detail::ReadRequiredField("asset", json, document.asset);
-
-        detail::ReadOptionalField("accessors", json, document.accessors);
-        detail::ReadOptionalField("animations", json, document.animations);
-        detail::ReadOptionalField("buffers", json, document.buffers);
-        detail::ReadOptionalField("bufferViews", json, document.bufferViews);
-        detail::ReadOptionalField("cameras", json, document.cameras);
-        detail::ReadOptionalField("materials", json, document.materials);
-        detail::ReadOptionalField("meshes", json, document.meshes);
-        detail::ReadOptionalField("nodes", json, document.nodes);
-        detail::ReadOptionalField("images", json, document.images);
-        detail::ReadOptionalField("samplers", json, document.samplers);
-        detail::ReadOptionalField("scene", json, document.scene);
-        detail::ReadOptionalField("scenes", json, document.scenes);
-        detail::ReadOptionalField("skins", json, document.skins);
-        detail::ReadOptionalField("textures", json, document.textures);
-
-        detail::ReadOptionalField("extensionsUsed", json, document.extensionsUsed);
-        detail::ReadOptionalField("extensionsRequired", json, document.extensionsRequired);
-        detail::ReadExtensionsAndExtras(json, document.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Accessor::ComponentType const & accessorComponentType)
-    {
-        if (accessorComponentType == Accessor::ComponentType::None)
-        {
-            throw invalid_gltf_document("Unknown accessor.componentType value");
-        }
-
-        json = static_cast<uint16_t>(accessorComponentType);
-    }
-
-    inline void to_json(nlohmann::json & json, Accessor::Type const & accessorType)
-    {
-        switch (accessorType)
+        switch (in_val)
         {
         case Accessor::Type::Scalar:
-            json = "SCALAR";
+            io_json.SetString("SCALAR");
             break;
         case Accessor::Type::Vec2:
-            json = "VEC2";
+            io_json.SetString("VEC2");
             break;
         case Accessor::Type::Vec3:
-            json = "VEC3";
+            io_json.SetString("VEC3");
             break;
         case Accessor::Type::Vec4:
-            json = "VEC4";
+            io_json.SetString("VEC4");
             break;
         case Accessor::Type::Mat2:
-            json = "MAT2";
+            io_json.SetString("MAT2");
             break;
         case Accessor::Type::Mat3:
-            json = "MAT3";
+            io_json.SetString("MAT3");
             break;
         case Accessor::Type::Mat4:
-            json = "MAT4";
+            io_json.SetString("MAT4");
             break;
         default:
             throw invalid_gltf_document("Unknown accessor.type value");
         }
     }
 
-    inline void to_json(nlohmann::json & json, Accessor::Sparse::Values const & values)
+    inline void to_json(rapidjson::Value& io_json, const Accessor::Sparse::Values& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc)
     {
-        detail::WriteField("bufferView", json, values.bufferView, static_cast<uint32_t>(-1));
-        detail::WriteField("byteOffset", json, values.byteOffset, {});
-        detail::WriteExtensions(json, values.extensionsAndExtras);
+        io_json.SetObject();
+        detail::WriteField("bufferView", io_json, in_val.bufferView, static_cast<uint32_t>(-1), in_alloc);
+        detail::WriteField("byteOffset", io_json, in_val.byteOffset, {}, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Accessor::Sparse::Indices const & indices)
-    {
-        detail::WriteField("componentType", json, indices.componentType, Accessor::ComponentType::None);
-        detail::WriteField("bufferView", json, indices.bufferView, static_cast<uint32_t>(-1));
-        detail::WriteField("byteOffset", json, indices.byteOffset, {});
-        detail::WriteExtensions(json, indices.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Accessor::Sparse::Indices& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("componentType", io_json, in_val.componentType, Accessor::ComponentType::None,
+                           in_alloc);
+        detail::WriteField("bufferView", io_json, in_val.bufferView, static_cast<uint32_t>(-1), in_alloc);
+        detail::WriteField("byteOffset", io_json, in_val.byteOffset, {}, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Accessor::Sparse const & sparse)
-    {
-        detail::WriteField("count", json, sparse.count, -1);
-        detail::WriteField("indices", json, sparse.indices);
-        detail::WriteField("values", json, sparse.values);
-        detail::WriteExtensions(json, sparse.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Accessor::Sparse& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("count", io_json, in_val.count, -1, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("indices", io_json, in_val.indices, in_alloc);
+        detail::WriteField("values", io_json, in_val.values, in_alloc);
     }
 
-    namespace detail
-    {
-        template <typename TType>
-        inline void WriteMinMaxConvert(nlohmann::json & json, Accessor const & accessor)
-        {
-            if (!accessor.min.empty())
-            {
-                auto & item = json["min"];
-                for (float v : accessor.min)
-                {
-                    item.push_back(static_cast<TType>(v));
-                }
-            }
+    inline void to_json(rapidjson::Value& io_json, const Accessor& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("bufferView", io_json, in_val.bufferView, -1, in_alloc);
+        detail::WriteField("byteOffset", io_json, in_val.byteOffset, {}, in_alloc);
+        detail::WriteField("componentType", io_json, in_val.componentType, Accessor::ComponentType::None,
+                           in_alloc);
+        detail::WriteField("count", io_json, in_val.count, {}, in_alloc);
 
-            if (!accessor.max.empty())
-            {
-                auto & item = json["max"];
-                for (float v : accessor.max)
-                {
-                    item.push_back(static_cast<TType>(v));
-                }
-            }
-        }
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
 
-        inline void WriteAccessorMinMax(nlohmann::json & json, Accessor const & accessor)
-        {
-            switch (accessor.componentType)
-            {
-            // fast path
-            case Accessor::ComponentType::Float:
-                detail::WriteField("max", json, accessor.max);
-                detail::WriteField("min", json, accessor.min);
+        detail::WriteField("max", io_json, in_val.max, in_alloc);
+        detail::WriteField("min", io_json, in_val.min, in_alloc);
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("normalized", io_json, in_val.normalized, false, in_alloc);
+        detail::WriteField("sparse", io_json, in_val.sparse, in_alloc);
+        detail::WriteField("type", io_json, in_val.type, Accessor::Type::None, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Animation::Channel::Target& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("node", io_json, in_val.node, -1, in_alloc);
+        detail::WriteField("path", io_json, in_val.path, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Animation::Channel& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("sampler", io_json, in_val.sampler, -1, in_alloc);
+        detail::WriteField("target", io_json, in_val.target, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Animation::Sampler::Type& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        switch (in_val) {
+            case Animation::Sampler::Type::Linear:
+                io_json.SetString("LINEAR");
                 break;
-
-            // slow path conversions...
-            case Accessor::ComponentType::Byte:
-                WriteMinMaxConvert<int8_t>(json, accessor);
+            case Animation::Sampler::Type::Step:
+                io_json.SetString("STEP");
                 break;
-            case Accessor::ComponentType::UnsignedByte:
-                WriteMinMaxConvert<uint8_t>(json, accessor);
+            case Animation::Sampler::Type::CubicSpline:
+                io_json.SetString("CUBICSPLINE");
                 break;
-            case Accessor::ComponentType::Short:
-                WriteMinMaxConvert<int16_t>(json, accessor);
+        }
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Animation::Sampler& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("input", io_json, in_val.input, -1, in_alloc);
+        detail::WriteField("interpolation", io_json, in_val.interpolation, Animation::Sampler::Type::Linear,
+                           in_alloc);
+        detail::WriteField("output", io_json, in_val.output, -1, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Animation& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("channels", io_json, in_val.channels, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("samplers", io_json, in_val.samplers, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Asset& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("copyright", io_json, in_val.copyright, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("generator", io_json, in_val.generator, in_alloc);
+        detail::WriteField("minVersion", io_json, in_val.minVersion, in_alloc);
+        detail::WriteField("version", io_json, in_val.version, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Buffer& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("byteLength", io_json, in_val.byteLength, {}, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("uri", io_json, in_val.uri, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const BufferView& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("buffer", io_json, in_val.buffer, -1, in_alloc);
+        detail::WriteField("byteLength", io_json, in_val.byteLength, {}, in_alloc);
+        detail::WriteField("byteOffset", io_json, in_val.byteOffset, {}, in_alloc);
+        detail::WriteField("byteStride", io_json, in_val.byteStride, {}, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("target", io_json, in_val.target, BufferView::TargetType::None, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Camera::Type& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        switch (in_val) {
+            case Camera::Type::Orthographic:
+                io_json.SetString("orthographic");
                 break;
-            case Accessor::ComponentType::UnsignedShort:
-                WriteMinMaxConvert<uint16_t>(json, accessor);
+            case Camera::Type::Perspective:
+                io_json.SetString("perspective");
                 break;
-            case Accessor::ComponentType::UnsignedInt:
-                WriteMinMaxConvert<uint32_t>(json, accessor);
+            default:
+                throw invalid_gltf_document("Unknown camera.type value");
+        }
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Camera::Orthographic& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("xmag", io_json, in_val.xmag, defaults::FloatSentinel, in_alloc);
+        detail::WriteField("ymag", io_json, in_val.ymag, defaults::FloatSentinel, in_alloc);
+        detail::WriteField("zfar", io_json, in_val.zfar, -defaults::FloatSentinel, in_alloc);
+        detail::WriteField("znear", io_json, in_val.znear, -defaults::FloatSentinel, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Camera::Perspective& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("aspectRatio", io_json, in_val.aspectRatio, {}, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("yfov", io_json, in_val.yfov, {}, in_alloc);
+        detail::WriteField("zfar", io_json, in_val.zfar, {}, in_alloc);
+        detail::WriteField("znear", io_json, in_val.znear, {}, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Camera& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("type", io_json, in_val.type, Camera::Type::None, in_alloc);
+
+        if (in_val.type == Camera::Type::Perspective) {
+            detail::WriteField("perspective", io_json, in_val.perspective, in_alloc);
+        } else if (in_val.type == Camera::Type::Orthographic) {
+            detail::WriteField("orthographic", io_json, in_val.orthographic, in_alloc);
+        }
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Image& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("bufferView", io_json, in_val.bufferView,
+                           in_val.uri.empty() ? -1
+                                             : 0, in_alloc); // bufferView or uri need to be written; even if default 0
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("mimeType", io_json, in_val.mimeType, in_alloc);
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("uri", io_json, in_val.uri, in_alloc);
+    }
+
+
+    inline void to_json(rapidjson::Value& io_json, const Material::AlphaMode& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        switch (in_val) {
+            case Material::AlphaMode::Opaque:
+                io_json.SetString("OPAQUE");
                 break;
-            case Accessor::ComponentType::None:
+            case Material::AlphaMode::Mask:
+                io_json.SetString("MASK");
                 break;
-            }
-        }
-    } // namespace detail
-
-    inline void to_json(nlohmann::json & json, Accessor const & accessor)
-    {
-        detail::WriteField("bufferView", json, accessor.bufferView, -1);
-        detail::WriteField("byteOffset", json, accessor.byteOffset, {});
-        detail::WriteField("componentType", json, accessor.componentType, Accessor::ComponentType::None);
-        detail::WriteField("count", json, accessor.count, {});
-        detail::WriteAccessorMinMax(json, accessor);
-        detail::WriteField("name", json, accessor.name);
-        detail::WriteField("normalized", json, accessor.normalized, false);
-        detail::WriteField("sparse", json, accessor.sparse);
-        detail::WriteField("type", json, accessor.type, Accessor::Type::None);
-        detail::WriteExtensions(json, accessor.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Animation::Channel::Target const & animationChannelTarget)
-    {
-        detail::WriteField("node", json, animationChannelTarget.node, -1);
-        detail::WriteField("path", json, animationChannelTarget.path);
-        detail::WriteExtensions(json, animationChannelTarget.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Animation::Channel const & animationChannel)
-    {
-        detail::WriteField("sampler", json, animationChannel.sampler, -1);
-        detail::WriteField("target", json, animationChannel.target);
-        detail::WriteExtensions(json, animationChannel.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Animation::Sampler::Type const & animationSamplerType)
-    {
-        switch (animationSamplerType)
-        {
-        case Animation::Sampler::Type::Linear:
-            json = "LINEAR";
-            break;
-        case Animation::Sampler::Type::Step:
-            json = "STEP";
-            break;
-        case Animation::Sampler::Type::CubicSpline:
-            json = "CUBICSPLINE";
-            break;
+            case Material::AlphaMode::Blend:
+                io_json.SetString("BLEND");
+                break;
         }
     }
 
-    inline void to_json(nlohmann::json & json, Animation::Sampler const & animationSampler)
-    {
-        detail::WriteField("input", json, animationSampler.input, -1);
-        detail::WriteField("interpolation", json, animationSampler.interpolation, Animation::Sampler::Type::Linear);
-        detail::WriteField("output", json, animationSampler.output, -1);
-        detail::WriteExtensions(json, animationSampler.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Material::Texture& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        if (! io_json.IsObject())
+            io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("index", io_json, in_val.index, -1, in_alloc);
+        detail::WriteField("texCoord", io_json, in_val.texCoord, 0, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Animation const & animation)
-    {
-        detail::WriteField("channels", json, animation.channels);
-        detail::WriteField("name", json, animation.name);
-        detail::WriteField("samplers", json, animation.samplers);
-        detail::WriteExtensions(json, animation.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Material::NormalTexture& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        to_json(io_json, static_cast<Material::Texture const&>(in_val), in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("scale", io_json, in_val.scale, defaults::IdentityScalar, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Asset const & asset)
-    {
-        detail::WriteField("copyright", json, asset.copyright);
-        detail::WriteField("generator", json, asset.generator);
-        detail::WriteField("minVersion", json, asset.minVersion);
-        detail::WriteField("version", json, asset.version);
-        detail::WriteExtensions(json, asset.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Material::OcclusionTexture& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        to_json(io_json, static_cast<Material::Texture const&>(in_val), in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("strength", io_json, in_val.strength, defaults::IdentityScalar, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Buffer const & buffer)
-    {
-        detail::WriteField("byteLength", json, buffer.byteLength, {});
-        detail::WriteField("name", json, buffer.name);
-        detail::WriteField("uri", json, buffer.uri);
-        detail::WriteExtensions(json, buffer.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Material::PBRMetallicRoughness& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("baseColorFactor", io_json, in_val.baseColorFactor, defaults::IdentityVec4,
+                           in_alloc);
+        detail::WriteField("baseColorTexture", io_json, in_val.baseColorTexture, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("metallicFactor", io_json, in_val.metallicFactor, defaults::IdentityScalar,
+                           in_alloc);
+        detail::WriteField("metallicRoughnessTexture", io_json, in_val.metallicRoughnessTexture, in_alloc);
+        detail::WriteField("roughnessFactor", io_json, in_val.roughnessFactor, defaults::IdentityScalar,
+                           in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, BufferView const & bufferView)
-    {
-        detail::WriteField("buffer", json, bufferView.buffer, -1);
-        detail::WriteField("byteLength", json, bufferView.byteLength, {});
-        detail::WriteField("byteOffset", json, bufferView.byteOffset, {});
-        detail::WriteField("byteStride", json, bufferView.byteStride, {});
-        detail::WriteField("name", json, bufferView.name);
-        detail::WriteField("target", json, bufferView.target, BufferView::TargetType::None);
-        detail::WriteExtensions(json, bufferView.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Material& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("alphaCutoff", io_json, in_val.alphaCutoff, defaults::MaterialAlphaCutoff, in_alloc);
+        detail::WriteField("alphaMode", io_json, in_val.alphaMode, Material::AlphaMode::Opaque, in_alloc);
+        detail::WriteField("doubleSided", io_json, in_val.doubleSided, defaults::MaterialDoubleSided,
+                           in_alloc);
+        detail::WriteField("emissiveTexture", io_json, in_val.emissiveTexture, in_alloc);
+        detail::WriteField("emissiveFactor", io_json, in_val.emissiveFactor, defaults::NullVec3, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("normalTexture", io_json, in_val.normalTexture, in_alloc);
+        detail::WriteField("occlusionTexture", io_json, in_val.occlusionTexture, in_alloc);
+        detail::WriteField("pbrMetallicRoughness", io_json, in_val.pbrMetallicRoughness, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Camera::Type const & cameraType)
-    {
-        switch (cameraType)
-        {
-        case Camera::Type::Orthographic:
-            json = "orthographic";
-            break;
-        case Camera::Type::Perspective:
-            json = "perspective";
-            break;
-        default:
-            throw invalid_gltf_document("Unknown camera.type value");
+    inline void to_json(rapidjson::Value& io_json, const Mesh& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("primitives", io_json, in_val.primitives, in_alloc);
+        detail::WriteField("weights", io_json, in_val.weights, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Node& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("camera", io_json, in_val.camera, -1, in_alloc);
+        detail::WriteField("children", io_json, in_val.children, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("matrix", io_json, in_val.matrix, defaults::IdentityMatrix, in_alloc);
+        detail::WriteField("mesh", io_json, in_val.mesh, -1, in_alloc);
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("rotation", io_json, in_val.rotation, defaults::IdentityRotation, in_alloc);
+        detail::WriteField("scale", io_json, in_val.scale, defaults::IdentityVec3, in_alloc);
+        detail::WriteField("skin", io_json, in_val.skin, -1, in_alloc);
+        detail::WriteField("translation", io_json, in_val.translation, defaults::NullVec3, in_alloc);
+        detail::WriteField("weights", io_json, in_val.weights, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Primitive& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        detail::WriteField("attributes", io_json, in_val.attributes, in_alloc);
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("indices", io_json, in_val.indices, -1, in_alloc);
+        detail::WriteField("material", io_json, in_val.material, -1, in_alloc);
+        detail::WriteField("mode", io_json, in_val.mode, Primitive::Mode::Triangles, in_alloc);
+        detail::WriteField("targets", io_json, in_val.targets, in_alloc);
+    }
+
+    inline void to_json(rapidjson::Value& io_json, const Sampler& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+        if (! in_val.empty()) {
+            if (in_val.extensions)
+                detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+            if (in_val.extras)
+                detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+            detail::WriteField("name", io_json, in_val.name, in_alloc);
+            detail::WriteField("magFilter", io_json, in_val.magFilter, Sampler::MagFilter::None, in_alloc);
+            detail::WriteField("minFilter", io_json, in_val.minFilter, Sampler::MinFilter::None, in_alloc);
+            detail::WriteField("wrapS", io_json, in_val.wrapS, Sampler::WrappingMode::Repeat, in_alloc);
+            detail::WriteField("wrapT", io_json, in_val.wrapT, Sampler::WrappingMode::Repeat, in_alloc);
+        } else {
+            // If a sampler is completely empty we still need to write out an empty object for the
+            // encompassing array...
         }
     }
 
-    inline void to_json(nlohmann::json & json, Camera::Orthographic const & camera)
-    {
-        detail::WriteField("xmag", json, camera.xmag, defaults::FloatSentinel);
-        detail::WriteField("ymag", json, camera.ymag, defaults::FloatSentinel);
-        detail::WriteField("zfar", json, camera.zfar, -defaults::FloatSentinel);
-        detail::WriteField("znear", json, camera.znear, -defaults::FloatSentinel);
-        detail::WriteExtensions(json, camera.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Scene& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("nodes", io_json, in_val.nodes, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Camera::Perspective const & camera)
-    {
-        detail::WriteField("aspectRatio", json, camera.aspectRatio, {});
-        detail::WriteField("yfov", json, camera.yfov, {});
-        detail::WriteField("zfar", json, camera.zfar, {});
-        detail::WriteField("znear", json, camera.znear, {});
-        detail::WriteExtensions(json, camera.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Skin& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
+
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("inverseBindMatrices", io_json, in_val.inverseBindMatrices, -1, in_alloc);
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("skeleton", io_json, in_val.skeleton, -1, in_alloc);
+        detail::WriteField("joints", io_json, in_val.joints, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Camera const & camera)
-    {
-        detail::WriteField("name", json, camera.name);
-        detail::WriteField("type", json, camera.type, Camera::Type::None);
-        detail::WriteExtensions(json, camera.extensionsAndExtras);
+    inline void to_json(rapidjson::Value& io_json, const Texture& in_val,
+                        rapidjson::MemoryPoolAllocator<>& in_alloc) {
+        io_json.SetObject();
 
-        if (camera.type == Camera::Type::Perspective)
-        {
-            detail::WriteField("perspective", json, camera.perspective);
-        }
-        else if (camera.type == Camera::Type::Orthographic)
-        {
-            detail::WriteField("orthographic", json, camera.orthographic);
-        }
+        if (in_val.extensions)
+            detail::WriteField("extensions", io_json, *in_val.extensions, in_alloc);
+        if (in_val.extras)
+            detail::WriteField("extras", io_json, *in_val.extras, in_alloc);
+
+        detail::WriteField("name", io_json, in_val.name, in_alloc);
+        detail::WriteField("sampler", io_json, in_val.sampler, -1, in_alloc);
+        detail::WriteField("source", io_json, in_val.source, -1, in_alloc);
     }
 
-    inline void to_json(nlohmann::json & json, Image const & image)
-    {
-        detail::WriteField("bufferView", json, image.bufferView, image.uri.empty() ? -1 : 0); // bufferView or uri need to be written; even if default 0
-        detail::WriteField("mimeType", json, image.mimeType);
-        detail::WriteField("name", json, image.name);
-        detail::WriteField("uri", json, image.uri);
-        detail::WriteExtensions(json, image.extensionsAndExtras);
-    }
+    inline void to_json(rapidjson::Document& io_json, const Document& in_document) {
+        io_json.SetObject();
+        rapidjson::MemoryPoolAllocator<>& alloc = io_json.GetAllocator();
 
-    inline void to_json(nlohmann::json & json, Material::AlphaMode const & materialAlphaMode)
-    {
-        switch (materialAlphaMode)
-        {
-        case Material::AlphaMode::Opaque:
-            json = "OPAQUE";
-            break;
-        case Material::AlphaMode::Mask:
-            json = "MASK";
-            break;
-        case Material::AlphaMode::Blend:
-            json = "BLEND";
-            break;
-        }
-    }
+        detail::WriteField("accessors", io_json, in_document.accessors, alloc);
+        detail::WriteField("animations", io_json, in_document.animations, alloc);
+        detail::WriteField("asset", io_json, in_document.asset, alloc);
+        detail::WriteField("bufferViews", io_json, in_document.bufferViews, alloc);
+        detail::WriteField("buffers", io_json, in_document.buffers, alloc);
+        detail::WriteField("cameras", io_json, in_document.cameras, alloc);
 
-    inline void to_json(nlohmann::json & json, Material::Texture const & materialTexture)
-    {
-        detail::WriteField("index", json, materialTexture.index, -1);
-        detail::WriteField("texCoord", json, materialTexture.texCoord, 0);
-        detail::WriteExtensions(json, materialTexture.extensionsAndExtras);
-    }
+        if (in_document.extensions)
+            detail::WriteField("extensions", io_json, *in_document.extensions, alloc);
+        detail::WriteField("extensionsUsed", io_json, in_document.extensionsUsed, alloc);
+        detail::WriteField("extensionsRequired", io_json, in_document.extensionsRequired, alloc);
+        if (in_document.extras)
+            detail::WriteField("extras", io_json, *in_document.extras, alloc);
 
-    inline void to_json(nlohmann::json & json, Material::NormalTexture const & materialTexture)
-    {
-        to_json(json, static_cast<Material::Texture const &>(materialTexture));
-        detail::WriteField("scale", json, materialTexture.scale, defaults::IdentityScalar);
-        detail::WriteExtensions(json, materialTexture.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Material::OcclusionTexture const & materialTexture)
-    {
-        to_json(json, static_cast<Material::Texture const &>(materialTexture));
-        detail::WriteField("strength", json, materialTexture.strength, defaults::IdentityScalar);
-        detail::WriteExtensions(json, materialTexture.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Material::PBRMetallicRoughness const & pbrMetallicRoughness)
-    {
-        detail::WriteField("baseColorFactor", json, pbrMetallicRoughness.baseColorFactor, defaults::IdentityVec4);
-        detail::WriteField("baseColorTexture", json, pbrMetallicRoughness.baseColorTexture);
-        detail::WriteField("metallicFactor", json, pbrMetallicRoughness.metallicFactor, defaults::IdentityScalar);
-        detail::WriteField("metallicRoughnessTexture", json, pbrMetallicRoughness.metallicRoughnessTexture);
-        detail::WriteField("roughnessFactor", json, pbrMetallicRoughness.roughnessFactor, defaults::IdentityScalar);
-        detail::WriteExtensions(json, pbrMetallicRoughness.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Material const & material)
-    {
-        detail::WriteField("alphaCutoff", json, material.alphaCutoff, defaults::MaterialAlphaCutoff);
-        detail::WriteField("alphaMode", json, material.alphaMode, Material::AlphaMode::Opaque);
-        detail::WriteField("doubleSided", json, material.doubleSided, defaults::MaterialDoubleSided);
-        detail::WriteField("emissiveTexture", json, material.emissiveTexture);
-        detail::WriteField("emissiveFactor", json, material.emissiveFactor, defaults::NullVec3);
-        detail::WriteField("name", json, material.name);
-        detail::WriteField("normalTexture", json, material.normalTexture);
-        detail::WriteField("occlusionTexture", json, material.occlusionTexture);
-        detail::WriteField("pbrMetallicRoughness", json, material.pbrMetallicRoughness);
-
-        detail::WriteExtensions(json, material.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Mesh const & mesh)
-    {
-        detail::WriteField("name", json, mesh.name);
-        detail::WriteField("primitives", json, mesh.primitives);
-        detail::WriteField("weights", json, mesh.weights);
-        detail::WriteExtensions(json, mesh.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Node const & node)
-    {
-        detail::WriteField("camera", json, node.camera, -1);
-        detail::WriteField("children", json, node.children);
-        detail::WriteField("matrix", json, node.matrix, defaults::IdentityMatrix);
-        detail::WriteField("mesh", json, node.mesh, -1);
-        detail::WriteField("name", json, node.name);
-        detail::WriteField("rotation", json, node.rotation, defaults::IdentityRotation);
-        detail::WriteField("scale", json, node.scale, defaults::IdentityVec3);
-        detail::WriteField("skin", json, node.skin, -1);
-        detail::WriteField("translation", json, node.translation, defaults::NullVec3);
-        detail::WriteField("weights", json, node.weights);
-        detail::WriteExtensions(json, node.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Primitive const & primitive)
-    {
-        detail::WriteField("attributes", json, primitive.attributes);
-        detail::WriteField("indices", json, primitive.indices, -1);
-        detail::WriteField("material", json, primitive.material, -1);
-        detail::WriteField("mode", json, primitive.mode, Primitive::Mode::Triangles);
-        detail::WriteField("targets", json, primitive.targets);
-        detail::WriteExtensions(json, primitive.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Sampler const & sampler)
-    {
-        if (!sampler.empty())
-        {
-            detail::WriteField("name", json, sampler.name);
-            detail::WriteField("magFilter", json, sampler.magFilter, Sampler::MagFilter::None);
-            detail::WriteField("minFilter", json, sampler.minFilter, Sampler::MinFilter::None);
-            detail::WriteField("wrapS", json, sampler.wrapS, Sampler::WrappingMode::Repeat);
-            detail::WriteField("wrapT", json, sampler.wrapT, Sampler::WrappingMode::Repeat);
-            detail::WriteExtensions(json, sampler.extensionsAndExtras);
-        }
-        else
-        {
-            // If a sampler is completely empty we still need to write out an empty object for the encompassing array...
-            json = nlohmann::json::object();
-        }
-    }
-
-    inline void to_json(nlohmann::json & json, Scene const & scene)
-    {
-        detail::WriteField("name", json, scene.name);
-        detail::WriteField("nodes", json, scene.nodes);
-        detail::WriteExtensions(json, scene.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Skin const & skin)
-    {
-        detail::WriteField("inverseBindMatrices", json, skin.inverseBindMatrices, -1);
-        detail::WriteField("name", json, skin.name);
-        detail::WriteField("skeleton", json, skin.skeleton, -1);
-        detail::WriteField("joints", json, skin.joints);
-        detail::WriteExtensions(json, skin.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Texture const & texture)
-    {
-        detail::WriteField("name", json, texture.name);
-        detail::WriteField("sampler", json, texture.sampler, -1);
-        detail::WriteField("source", json, texture.source, -1);
-        detail::WriteExtensions(json, texture.extensionsAndExtras);
-    }
-
-    inline void to_json(nlohmann::json & json, Document const & document)
-    {
-        detail::WriteField("accessors", json, document.accessors);
-        detail::WriteField("animations", json, document.animations);
-        detail::WriteField("asset", json, document.asset);
-        detail::WriteField("buffers", json, document.buffers);
-        detail::WriteField("bufferViews", json, document.bufferViews);
-        detail::WriteField("cameras", json, document.cameras);
-        detail::WriteField("images", json, document.images);
-        detail::WriteField("materials", json, document.materials);
-        detail::WriteField("meshes", json, document.meshes);
-        detail::WriteField("nodes", json, document.nodes);
-        detail::WriteField("samplers", json, document.samplers);
-        detail::WriteField("scene", json, document.scene, -1);
-        detail::WriteField("scenes", json, document.scenes);
-        detail::WriteField("skins", json, document.skins);
-        detail::WriteField("textures", json, document.textures);
-
-        detail::WriteField("extensionsUsed", json, document.extensionsUsed);
-        detail::WriteField("extensionsRequired", json, document.extensionsRequired);
-        detail::WriteExtensions(json, document.extensionsAndExtras);
+        detail::WriteField("images", io_json, in_document.images, alloc);
+        detail::WriteField("materials", io_json, in_document.materials, alloc);
+        detail::WriteField("meshes", io_json, in_document.meshes, alloc);
+        detail::WriteField("nodes", io_json, in_document.nodes, alloc);
+        detail::WriteField("samplers", io_json, in_document.samplers, alloc);
+        detail::WriteField("scene", io_json, in_document.scene, -1, alloc);
+        detail::WriteField("scenes", io_json, in_document.scenes, alloc);
+        detail::WriteField("skins", io_json, in_document.skins, alloc);
+        detail::WriteField("textures", io_json, in_document.textures, alloc);
     }
 
     namespace detail
@@ -1667,6 +2010,7 @@ namespace gltf
             ReadQuotas readQuotas;
 
             std::vector<uint8_t> * binaryData{};
+            std::map<std::string, std::vector<uint8_t>> const* binaryBuffers{};
         };
 
         inline void ThrowIfBad(std::ios const & io)
@@ -1707,9 +2051,10 @@ namespace gltf
             }
         }
 
-        inline Document Create(nlohmann::json const & json, DataContext const & dataContext)
+        inline Document Create(const rapidjson::Document& in_d, DataContext const & dataContext)
         {
-            Document document = json;
+            Document document;
+            from_json(in_d, document);
 
             if (document.buffers.size() > dataContext.readQuotas.MaxBufferCount)
             {
@@ -1733,6 +2078,12 @@ namespace gltf
                     if (buffer.IsEmbeddedResource())
                     {
                         detail::MaterializeData(buffer);
+                    }
+                    else if (dataContext.binaryBuffers->find(buffer.uri) != dataContext.binaryBuffers->cend())
+                    {
+                        std::vector<uint8_t> const& binary = dataContext.binaryBuffers->at(buffer.uri);
+                        buffer.data.resize(buffer.byteLength);
+                        std::memcpy(&buffer.data[0], &binary[0], buffer.byteLength);
                     }
                     else
                     {
@@ -1805,15 +2156,19 @@ namespace gltf
             // if it's "good" is the best we can do from here...
             detail::ThrowIfBad(output);
 
-            nlohmann::json json = document;
+            rapidjson::Document json;
+            to_json(json, document);
 
             std::size_t externalBufferIndex = 0;
             if (useBinaryFormat)
             {
                 detail::GLBHeader header{ detail::GLBHeaderMagic, 2, 0, { 0, detail::GLBChunkJSON } };
                 detail::ChunkHeader binHeader{ 0, detail::GLBChunkBIN };
-
-                std::string jsonText = json.dump();
+                
+                rapidjson::StringBuffer sb;
+                rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+                json.Accept(writer);
+                std::string jsonText = sb.GetString();
 
                 Buffer const & binBuffer = document.buffers.front();
                 const uint32_t binPaddedLength = ((binBuffer.byteLength + 3) & (~3u));
@@ -1838,7 +2193,11 @@ namespace gltf
             }
             else
             {
-                output << json.dump(2);
+                rapidjson::StringBuffer sb;
+                rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(sb);
+                writer.SetIndent(' ', 2);
+                json.Accept(writer);
+                output << sb.GetString();
             }
 
             // The glTF 2.0 spec allows a document to have more than 1 buffer. However, only the first one will be included in the .glb
@@ -1860,16 +2219,17 @@ namespace gltf
         }
     } // namespace detail
 
-    inline Document LoadFromText(std::istream & input, FX_GLTF_FILESYSTEM::path const & documentRootPath, ReadQuotas const & readQuotas = {})
+    inline Document LoadFromText(std::istream & input, FX_GLTF_FILESYSTEM::path const & documentRootPath, ReadQuotas const & readQuotas = {}, std::map<std::string, std::vector<uint8_t>> const& binaryBuffers = {})
     {
         try
         {
             detail::ThrowIfBad(input);
 
-            nlohmann::json json;
-            input >> json;
+            rapidjson::Document       d;
+            rapidjson::IStreamWrapper isw(input);
+            rapidjson::ParseResult    parseResult = d.ParseStream(isw);
 
-            return detail::Create(json, { documentRootPath, readQuotas });
+            return detail::Create(d, { documentRootPath, readQuotas, nullptr, &binaryBuffers });
         }
         catch (invalid_gltf_document &)
         {
@@ -1936,9 +2296,14 @@ namespace gltf
             binary.resize(binHeader.chunkLength);
             detail::ThrowIfBad(input.read(reinterpret_cast<char *>(&binary[0]), binHeader.chunkLength));
 
-            return detail::Create(
-                nlohmann::json::parse(json.begin(), json.end()),
-                { documentRootPath, readQuotas, &binary });
+            rapidjson::Document    d;
+            std::string            jsonStr((const char*) json.data(), header.jsonHeader.chunkLength);
+            rapidjson::ParseResult parseResult = d.Parse(jsonStr.data());
+
+            if (parseResult)
+            {
+                return detail::Create(d, {documentRootPath, readQuotas, &binary});
+            }
         }
         catch (invalid_gltf_document &)
         {
@@ -1952,6 +2317,8 @@ namespace gltf
         {
             std::throw_with_nested(invalid_gltf_document("Invalid glTF document. See nested exception for details."));
         }
+        
+        return Document();
     }
 
     inline Document LoadFromBinary(FX_GLTF_FILESYSTEM::path const & documentFilePath, ReadQuotas const & readQuotas = {})
@@ -2008,7 +2375,7 @@ inline void FormatException(std::string & output, std::exception const & ex, int
     }
 }
 
-} // namespace fx
+} // namespace rapidfx
 
 #undef FX_GLTF_HAS_CPP_17
 #undef FX_GLTF_NODISCARD
